@@ -1,0 +1,42 @@
+name: Export Icons from Figma (auto)
+
+on:
+  workflow_dispatch:
+    inputs:
+      parent_node_ids:
+        description: "Comma-separated parent frame node IDs (e.g. 2474:1 or URL style 2474-1). Multiple parents supported."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm install
+
+      - name: Export icons (auto from parent frames)
+        env:
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+          FIGMA_FILE_KEY: ${{ secrets.FIGMA_FILE_KEY }}
+          FIGMA_PARENT_NODE_IDS: ${{ inputs.parent_node_ids }}
+        run: npm run export:figma:auto
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add icons-auto
+          git diff --cached --quiet || git commit -m "chore(icons-auto): update exported SVGs (auto)"
+          git push
