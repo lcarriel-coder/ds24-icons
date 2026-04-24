@@ -1,0 +1,11 @@
+{
+  "name": "digistore24-icons-pipeline",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export:figma": "node scripts/export-from-figma.mjs"
+  },
+  "dependencies": {
+    "fs-extra": "^11.2.0"
+  }
+}

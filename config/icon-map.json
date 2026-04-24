@@ -1,0 +1,5 @@
+[
+  { "name": "pen", "nodeId": "123:456" },
+  { "name": "disk", "nodeId": "123:789" },
+  { "name": "trash", "nodeId": "124:001" }
+]
