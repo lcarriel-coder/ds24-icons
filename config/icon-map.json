@@ -1,6 +1,6 @@
 [
-  { "name": "check", "nodeId": "2474-3" },
-  { "name": "disk", "nodeId": "2474-5" },
-  { "name": "trash", "nodeId": "2474-7" }
+  { "name": "check", "nodeId": "2474:3" },
+  { "name": "disk", "nodeId": "2474:5" },
+  { "name": "trash", "nodeId": "2474:7" }
 ]
 
