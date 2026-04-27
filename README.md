@@ -49,6 +49,8 @@ export FIGMA_PARENT_NODE_IDS="2474:1, 2500:10"
 npm run export:figma:auto
 ```
 
+Large sets use **small batches, delays between requests, and retries on HTTP 429** so Figma rate limits are less likely.
+
 In GitHub: **Actions → Export Icons from Figma (auto) → Run workflow** and set `parent_node_ids`.
 
 If two layers resolve to the same file name, the script uses `name-2`, `name-3`, etc.

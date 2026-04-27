@@ -8,6 +8,12 @@ const FIGMA_PARENT_NODE_IDS = process.env.FIGMA_PARENT_NODE_IDS;
 /** Only INSTANCE layers whose name starts with this (case-insensitive). Fixed in code. */
 const ICON_INSTANCE_NAME_PREFIX = "icon-";
 
+/** Smaller batches + pacing reduce Figma API 429 rate limits. */
+const BATCH_SIZE = 15;
+const DELAY_MS_BETWEEN_BATCHES = 2500;
+const DELAY_MS_BETWEEN_SVG_FETCHES = 200;
+const MAX_429_RETRIES = 8;
+
 if (!FIGMA_TOKEN || !FIGMA_FILE_KEY) {
   throw new Error("Missing FIGMA_TOKEN or FIGMA_FILE_KEY");
 }
@@ -62,14 +68,40 @@ function uniqueName(baseName, used) {
   return candidate;
 }
 
-async function fetchJson(url) {
-  const resp = await fetch(url, {
-    headers: { "X-Figma-Token": FIGMA_TOKEN }
-  });
-  if (!resp.ok) {
-    throw new Error(`Figma request failed: ${resp.status} ${await resp.text()}`);
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Figma REST calls: retry on 429 with Retry-After or exponential backoff.
+ */
+async function fetchFigmaJsonWithRetry(url, label = "Figma API") {
+  let attempt = 0;
+  while (true) {
+    const resp = await fetch(url, {
+      headers: { "X-Figma-Token": FIGMA_TOKEN }
+    });
+    if (resp.status === 429) {
+      attempt += 1;
+      const body = await resp.text();
+      if (attempt > MAX_429_RETRIES) {
+        throw new Error(`${label} rate limited (429) after ${MAX_429_RETRIES} retries: ${body}`);
+      }
+      let waitMs = 15000 + attempt * 10000;
+      const ra = resp.headers.get("retry-after");
+      if (ra) {
+        const sec = parseInt(ra, 10);
+        if (!Number.isNaN(sec)) waitMs = Math.max(waitMs, sec * 1000);
+      }
+      console.warn(`${label}: 429 rate limit, waiting ${waitMs}ms (retry ${attempt}/${MAX_429_RETRIES})`);
+      await sleep(waitMs);
+      continue;
+    }
+    if (!resp.ok) {
+      throw new Error(`${label} failed: ${resp.status} ${await resp.text()}`);
+    }
+    return resp.json();
   }
-  return resp.json();
 }
 
 function nameMatchesIconPrefix(layerName) {
@@ -103,7 +135,7 @@ if (parentIds.length === 0) {
 
 const nodesQuery = parentIds.map((id) => encodeURIComponent(id)).join(",");
 const nodesUrl = `https://api.figma.com/v1/files/${FIGMA_FILE_KEY}/nodes?ids=${nodesQuery}`;
-const nodesJson = await fetchJson(nodesUrl);
+const nodesJson = await fetchFigmaJsonWithRetry(nodesUrl, "GET /files/nodes");
 const nodesMap = nodesJson.nodes || {};
 
 const iconEntries = [];
@@ -139,21 +171,23 @@ if (iconEntries.length === 0) {
 const iconsDir = path.resolve("icons-auto");
 await fs.ensureDir(iconsDir);
 
-const BATCH = 50;
-for (let i = 0; i < iconEntries.length; i += BATCH) {
-  const batch = iconEntries.slice(i, i + BATCH);
+let firstSvgFetch = true;
+for (let i = 0; i < iconEntries.length; i += BATCH_SIZE) {
+  const batch = iconEntries.slice(i, i + BATCH_SIZE);
+  if (i > 0) {
+    await sleep(DELAY_MS_BETWEEN_BATCHES);
+  }
   const ids = batch.map((x) => x.nodeId).join(",");
   const url = `https://api.figma.com/v1/images/${FIGMA_FILE_KEY}?ids=${encodeURIComponent(ids)}&format=svg`;
-  const imagesResp = await fetch(url, {
-    headers: { "X-Figma-Token": FIGMA_TOKEN }
-  });
-  if (!imagesResp.ok) {
-    throw new Error(`Figma images API failed: ${imagesResp.status} ${await imagesResp.text()}`);
-  }
-  const imagesJson = await imagesResp.json();
+  const imagesJson = await fetchFigmaJsonWithRetry(url, "GET /images");
   const images = imagesJson.images || {};
 
   for (const item of batch) {
+    if (!firstSvgFetch) {
+      await sleep(DELAY_MS_BETWEEN_SVG_FETCHES);
+    }
+    firstSvgFetch = false;
+
     const svgUrl = images[item.nodeId];
     if (!svgUrl) {
       console.warn(`No SVG URL for nodeId ${item.nodeId} (${item.name})`);
