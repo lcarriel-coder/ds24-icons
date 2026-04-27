@@ -49,7 +49,7 @@ export FIGMA_PARENT_NODE_IDS="2474:1, 2500:10"
 npm run export:figma:auto
 ```
 
-Large sets use **small batches, delays between requests, and retries on HTTP 429** so Figma rate limits are less likely.
+Large sets use **small batches, delays between requests, and retries on HTTP 429** so Figma rate limits are less likely. Absurdly large `Retry-After` headers from the API are **capped** (a few minutes max per wait) so jobs do not block for many hours.
 
 In GitHub: **Actions → Export Icons from Figma (auto) → Run workflow** and set `parent_node_ids`.
 

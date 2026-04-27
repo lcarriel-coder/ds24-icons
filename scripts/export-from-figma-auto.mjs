@@ -13,6 +13,9 @@ const BATCH_SIZE = 15;
 const DELAY_MS_BETWEEN_BATCHES = 2500;
 const DELAY_MS_BETWEEN_SVG_FETCHES = 200;
 const MAX_429_RETRIES = 8;
+/** Figma may send huge Retry-After (e.g. 129206s); cap so CI does not sleep for days. */
+const MAX_RETRY_AFTER_SECONDS = 120;
+const MAX_WAIT_MS_PER_429_ATTEMPT = 180_000;
 
 if (!FIGMA_TOKEN || !FIGMA_FILE_KEY) {
   throw new Error("Missing FIGMA_TOKEN or FIGMA_FILE_KEY");
@@ -90,10 +93,21 @@ async function fetchFigmaJsonWithRetry(url, label = "Figma API") {
       let waitMs = 15000 + attempt * 10000;
       const ra = resp.headers.get("retry-after");
       if (ra) {
-        const sec = parseInt(ra, 10);
-        if (!Number.isNaN(sec)) waitMs = Math.max(waitMs, sec * 1000);
+        const secRaw = parseInt(String(ra).trim(), 10);
+        if (!Number.isNaN(secRaw) && secRaw >= 0) {
+          const secCapped = Math.min(secRaw, MAX_RETRY_AFTER_SECONDS);
+          if (secCapped < secRaw) {
+            console.warn(
+              `Capping Figma Retry-After: ${secRaw}s -> ${secCapped}s (max ${MAX_RETRY_AFTER_SECONDS}s)`
+            );
+          }
+          waitMs = Math.max(waitMs, secCapped * 1000);
+        }
       }
-      console.warn(`${label}: 429 rate limit, waiting ${waitMs}ms (retry ${attempt}/${MAX_429_RETRIES})`);
+      waitMs = Math.min(waitMs, MAX_WAIT_MS_PER_429_ATTEMPT);
+      console.warn(
+        `${label}: 429 rate limit, waiting ${Math.round(waitMs / 1000)}s (retry ${attempt}/${MAX_429_RETRIES})`
+      );
       await sleep(waitMs);
       continue;
     }
