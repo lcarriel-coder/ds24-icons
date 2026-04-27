@@ -13,7 +13,7 @@ Pipeline to export SVG icons from Figma and publish them as static assets.
 
 - `config/icon-map.json`: mapping between icon name and Figma node ID
 - `scripts/export-from-figma.mjs`: exporter script (uses `icon-map.json`)
-- `scripts/export-from-figma-auto.mjs`: exporter from parent frame node IDs (no map file)
+- `scripts/export-from-figma-auto.mjs`: walks the Figma tree under parent node ID(s), exports `INSTANCE` layers whose name starts with `icon-`
 - `icons/`: generated SVG output (manual / `icon-map.json`)
 - `icons-auto/`: generated SVG output (auto / parent frame IDs)
 - `.github/workflows/export-icons.yml`: CI export workflow (manual map)
@@ -42,14 +42,14 @@ npm run export:figma
 
 ### Auto export (parent frames, no `icon-map.json`)
 
-Export every **direct child** of one or more parent frames (e.g. `icons-ds24`). Pass parent node IDs in API form (`123:456`) or URL form from copy link (`123-456`). Multiple parents: comma-separated.
+Pass one or more **parent** node IDs (section, `icons-ds24`, `Container`, etc.): the script fetches that subtree from the Figma API, then **depth-first** it collects only layers with **`type === INSTANCE`** whose name (trimmed) **starts with `icon-`** (case-insensitive). Icons can be **nested** (e.g. `icon-copy-01` under several frames); they do not have to be direct children of the parent.
 
 ```bash
 export FIGMA_PARENT_NODE_IDS="2474:1, 2500:10"
 npm run export:figma:auto
 ```
 
-In GitHub: **Actions → Export Icons from Figma (auto) → Run workflow** and paste the same string into `parent_node_ids`.
+In GitHub: **Actions → Export Icons from Figma (auto) → Run workflow** and set `parent_node_ids`.
 
 If two layers resolve to the same file name, the script uses `name-2`, `name-3`, etc.
 

@@ -5,12 +5,19 @@ const FIGMA_TOKEN = process.env.FIGMA_TOKEN;
 const FIGMA_FILE_KEY = process.env.FIGMA_FILE_KEY;
 const FIGMA_PARENT_NODE_IDS = process.env.FIGMA_PARENT_NODE_IDS;
 
+/** Only INSTANCE layers whose name starts with this (case-insensitive). Fixed in code. */
+const ICON_INSTANCE_NAME_PREFIX = "icon-";
+
 if (!FIGMA_TOKEN || !FIGMA_FILE_KEY) {
   throw new Error("Missing FIGMA_TOKEN or FIGMA_FILE_KEY");
 }
 if (!FIGMA_PARENT_NODE_IDS?.trim()) {
   throw new Error("Missing FIGMA_PARENT_NODE_IDS (comma-separated parent frame node IDs)");
 }
+
+console.log(
+  `Collecting INSTANCE nodes under each parent whose name starts with "${ICON_INSTANCE_NAME_PREFIX}" (case-insensitive)`
+);
 
 /** URL-style node-id uses hyphen; API uses colon. */
 function normalizeNodeId(raw) {
@@ -32,8 +39,6 @@ function sanitizeFileName(layerName) {
     .replace(/^-|-$/g, "");
   return base || "unnamed";
 }
-
-const SKIP_CHILD_TYPES = new Set(["SLICE"]);
 
 function parseParentIds(input) {
   return input
@@ -67,16 +72,28 @@ async function fetchJson(url) {
   return resp.json();
 }
 
-function collectDirectChildren(parentDoc) {
-  const children = parentDoc?.children;
-  if (!Array.isArray(children)) return [];
-  const out = [];
-  for (const child of children) {
-    if (!child?.id || !child.name) continue;
-    if (SKIP_CHILD_TYPES.has(child.type)) continue;
-    out.push({ nodeId: child.id, layerName: child.name });
+function nameMatchesIconPrefix(layerName) {
+  return String(layerName ?? "")
+    .trim()
+    .toLowerCase()
+    .startsWith(ICON_INSTANCE_NAME_PREFIX.toLowerCase());
+}
+
+/**
+ * Depth-first: collect every INSTANCE under `root` (including nested) whose name starts with "icon-".
+ * @param {Record<string, unknown> | null | undefined} root
+ * @param {{ nodeId: string, layerName: string }[]} out
+ */
+function walkInstances(root, out) {
+  if (!root) return;
+  if (root.type === "INSTANCE" && root.id && root.name && nameMatchesIconPrefix(root.name)) {
+    out.push({ nodeId: root.id, layerName: root.name });
   }
-  return out;
+  if (Array.isArray(root.children)) {
+    for (const child of root.children) {
+      walkInstances(child, out);
+    }
+  }
 }
 
 const parentIds = parseParentIds(FIGMA_PARENT_NODE_IDS);
@@ -99,12 +116,15 @@ for (const parentId of parentIds) {
     continue;
   }
   const doc = entry.document;
-  const kids = collectDirectChildren(doc);
-  if (kids.length === 0) {
-    console.warn(`Parent ${parentId} (${doc.name ?? "?"}) has no exportable direct children`);
+  const found = [];
+  walkInstances(doc, found);
+  if (found.length === 0) {
+    console.warn(
+      `Parent ${parentId} (${doc.name ?? "?"}): no INSTANCE nodes with name starting "${ICON_INSTANCE_NAME_PREFIX}" under this subtree`
+    );
     continue;
   }
-  for (const { nodeId, layerName } of kids) {
+  for (const { nodeId, layerName } of found) {
     const base = sanitizeFileName(layerName);
     const name = uniqueName(base, usedNames);
     iconEntries.push({ nodeId, name });
