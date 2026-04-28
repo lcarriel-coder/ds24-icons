@@ -1,0 +1,5 @@
+/icons/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/icons-auto/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
